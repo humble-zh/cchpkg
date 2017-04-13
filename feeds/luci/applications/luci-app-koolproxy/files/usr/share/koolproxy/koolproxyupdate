@@ -1,0 +1,206 @@
+#!/bin/sh
+# set -x
+
+. /lib/functions.sh
+
+# 初始化变量
+APPNAME="koolproxy"
+
+CONFIG=koolproxy
+TEMPPATH="/tmp/$APPNAME"
+DATAPATH="/usr/share/koolproxy/data"
+LOGFILE="/var/log/$APPNAME.log"
+
+config_t_get() {
+	local index=0
+	[ -n "$4" ] && index=$4
+	local ret=$(uci get $CONFIG.@$1[$index].$2 2>/dev/null)
+	echo ${ret:=$3}
+}
+
+Reduce_Log(){
+	local log=$1
+	[ ! -f "$log" ] && return
+	local sc=100
+	[ -n "$2" ] && sc=$2
+	local count=$(grep -c "" $log)
+	if [ $count -gt $sc ];then
+		let count=count-$sc
+		sed -i "1,$count d" $log
+	fi
+}
+
+InitEnv()
+{
+	rm -rf "$TEMPPATH"
+	mkdir -p "$TEMPPATH"
+}
+
+RestartApp()
+{
+	/etc/init.d/koolproxy restart
+}
+
+CompareFile()
+{
+	local descript=$1
+	local localPath=$2
+	local remoteUrl=$3
+	local remoteDate=$4
+
+	echo $(date): ------------------- $descript更新 ------------------- >>$LOGFILE
+	local filename=`basename $localPath`
+	local remotePath="$TEMPPATH/$filename"
+	wget-ssl -qT5 --no-check-certificate "$remoteUrl" -O "$remotePath"
+	if [ "$?" == "0" ]; then
+		if [ -f "$localPath" ]; then
+			localMD5=`md5sum "$localPath" | awk '{print $1}'`
+			localNum=`cat "$localPath" | grep -v '^!' | wc -l`
+		else
+			localMD5="文件不存在"
+			localNum="0"
+		fi
+		remoteMD5=`md5sum "$remotePath" | awk '{print $1}'`
+		remoteNum=`cat "$remotePath" | grep -v '^!' | wc -l`
+
+		echo $(date): 本地版本MD5：$localMD5 >>$LOGFILE
+		echo $(date): 本地版本条数：$localNum >>$LOGFILE
+		echo >>$LOGFILE
+		echo $(date): 在线版本日期：$remoteDate >>$LOGFILE
+		echo $(date): 在线版本MD5：$remoteMD5 >>$LOGFILE
+		echo $(date): 在线版本条数：$remoteNum >>$LOGFILE
+		echo >>$LOGFILE
+
+		if [ "$localMD5" != "$remoteMD5" ];then
+			echo $(date): 检测到更新，开始更新静态规则！ >>$LOGFILE
+			mv -f "$remotePath" "$localPath"
+			echo $(date): 更新成功！ >>$LOGFILE
+			echo >>$LOGFILE
+			return 0
+		fi
+	else
+		echo "$(date): 获取在线版本时出现错误! " >>$LOGFILE
+		echo >>$LOGFILE
+	fi
+	return 1
+}
+
+update_exrule(){
+	local file
+	local exrule
+	local enable
+	config_get file $1 file
+	config_get exrule $1 url
+	config_get enable $1 load
+	if [ -n "$file" ] && [ -n "$exrule" ]; then
+		if [ $enable -ne 1 ]; then
+			return
+		fi
+		wget-ssl --quiet --timeout=5 --no-check-certificate $exrule -O $DATAPATH/$file
+		echo $(date): ---------------------------------------------------- >>$LOGFILE
+		if [ "$?" == "0" ]; then
+			uci set koolproxy.$1.time="`date +%Y-%m-%d" "%H:%M`"
+			uci commit koolproxy
+			echo $(date): 更新成功！ $nick: $exrule >>$LOGFILE
+		else
+			echo $(date): 更新失败！ $nick: $exrule >>$LOGFILE
+		fi
+		echo >>$LOGFILE
+	fi
+}
+
+Update_RSSRule(){
+	config_load $CONFIG
+	config_foreach update_exrule rss_rule
+}
+
+Update_Host()
+{
+	/usr/sbin/adblockplus >>$LOGFILE 2>&1 &
+	echo >>$LOGFILE
+}
+
+Update_APP()
+{
+	for a in $(opkg print-architecture | awk '{print $2}'); do
+		case "$a" in
+			all|noarch)
+				;;
+			aarch64_armv8-a|arm_arm1176jzf-s_vfp|arm_arm926ej-s|arm_cortex-a15_neon-vfpv4|arm_cortex-a5|arm_cortex-a53_neon-vfpv4|arm_cortex-a7_neon-vfpv4|arm_cortex-a8_vfpv3|arm_cortex-a9|arm_cortex-a9_neon|arm_cortex-a9_vfpv3|arm_fa526|arm_mpcore|arm_mpcore_vfp|arm_xscale|armeb_xscale)
+				ARCH="arm"
+				;;
+			i386_pentium|i386_pentium4)
+				ARCH="i386"
+				;;
+			ar71xx|mips_24kc|mips_mips32|mips64_octeon)
+				ARCH="mips"
+				;;
+			mipsel_24kc|mipsel_74kc|mipsel_mips32|mipsel_1004kc_dsp)
+				ARCH="mipsel"
+				;;
+			powerpc_464fp|powerpc_8540)
+				ARCH="powerpc"
+				;;
+			x86_64)
+				ARCH="x86_64"
+				;;
+			*)
+				echo "Architectures not support."
+				exit 0
+				;;
+		esac
+	done
+
+	#echo Target Arch: $ARCH >>$LOGFILE
+
+	wget --quiet --timeout=5 "http://firmware.koolshare.cn/binary/KoolProxy/$ARCH" -O $TEMPPATH/koolproxy
+	chmod +x $TEMPPATH/koolproxy
+
+	old_version=`/usr/share/koolproxy/koolproxy -v`
+	new_version=`$TEMPPATH/koolproxy -v`
+
+	echo $(date): ---------------------------------------------------- >>$LOGFILE
+	if [ "$old_version" != "$new_version" ]; then
+		mv $TEMPPATH/koolproxy /usr/share/koolproxy/koolproxy
+		echo $(date): koolproxy $new_version 更新成功！ >>$LOGFILE
+	else
+		rm -f $TEMPPATH/koolproxy
+		echo $(date): koolproxy $old_version 本地已经是最新版本，无需更新！ >>$LOGFILE
+	fi
+	echo >>$LOGFILE
+}
+
+# 程序主体
+InitEnv
+Reduce_Log $LOGFILE
+#version="$TEMPPATH/version"
+#wget-ssl -qT5 --no-check-certificate "$SERVERURL/version" -O "$version"
+#if [ "$?" == "0" ]; then
+#	CompareFile "静态规则" "/usr/share/koolproxy/data/koolproxy.txt" "$SERVERURL/koolproxy.txt" "$(cat "$version" | awk 'NR==2{print}')"
+#	r1=$?
+#	CompareFile "视频规则" "/usr/share/koolproxy/data/1.dat" "$SERVERURL/1.dat" "$(cat "$version" | awk 'NR==4{print}')"
+#	r2=$?
+#	echo $(date): ---------------------------------------------------- >>$LOGFILE
+#	if [ $r1 -eq 0 ] || [ $r2 -eq 0 ]; then
+#		echo $(date): 正在自动重启使更新内容生效，请稍后！ >>$LOGFILE
+#		RestartApp
+#		echo $(date): 重启成功！ >>$LOGFILE
+#	else
+#		echo $(date): 本地已经是最新版本，无需更新！ >>$LOGFILE
+#	fi
+#	echo >>$LOGFILE
+#else
+#	echo $(date): 获取在线版本时出现错误，请检查你的网络环境！ >>$LOGFILE
+#fi
+if [ "$1" == "rules" ]; then
+	Update_RSSRule
+	Update_Host
+elif [ "$1" == "binary" ]; then
+	Update_APP
+else
+	Update_APP
+	Update_RSSRule
+	Update_Host
+fi
+RestartApp
+InitEnv
