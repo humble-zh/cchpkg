@@ -83,6 +83,10 @@ humble@humble-pc:~/lede$ make menuconfig
 humble@humble-pc:~/lede$ make package/kernel/hello_drv/compile V=99
 humble@humble-pc:~/lede$ find bin/ -name kmod-hello*
 bin/targets/ar71xx/generic/packages/kmod-hello_drv_4.4.61-1_mips_24kc.ipk
+humble@humble-pc:~/lede$ scp bin/targets/ar71xx/generic/packages/kmod-hello_drv_4.4.61-1_mips_24kc.ipk root@192.168.1.1:/tmp
+root@192.168.1.1's password: 
+kmod-hello_drv_4.4.61-1_mips_24kc.ipk         100% 1498     1.5KB/s   00:00    
+humble@humble-pc:~/lede$ 
 humble@humble-pc:~/lede$ ssh -l root 192.168.1.1
 root@192.168.1.1's password: 
 
