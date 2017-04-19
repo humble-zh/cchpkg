@@ -1,0 +1,12 @@
+
+config htest 'general'
+	option enable '1'
+	option local_addr '192.168.0.1'
+	option local_port '10'
+	option remote_addr '192.168.3.1'
+	option remote_port '100'
+	option usr 'username'
+	option pwd 'password'
+	option enable1 '1'
+	option proxy_type 'campus_router'
+

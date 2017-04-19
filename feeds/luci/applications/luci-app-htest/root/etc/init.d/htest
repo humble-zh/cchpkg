@@ -1,0 +1,20 @@
+#!/bin/sh /etc/rc.common
+#Copyright (C) 2017 OpenWrt.org
+#Program:
+#	script for luci-app-htest
+#LastModify:
+#	2017/04/19	Humble	First release
+#E-mail:humble_zh@163.com
+START=90
+STOP=99
+
+DATE=`date +%Y%m%d%H%M`
+
+start() {
+	echo "${DATE} luci-app-htest Start." >> /tmp/htest.txt
+}
+
+stop() {
+	echo "${DATE} luci-app-htest Stop" >> /tmp/htest.txt
+}
+

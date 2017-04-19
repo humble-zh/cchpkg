@@ -1,0 +1,11 @@
+#!/bin/sh
+
+uci -q batch <<-EOF >/dev/null
+	delete ucitrack.@htest[-1]
+	add ucitrack htest
+	set ucitrack.@htest[-1].init=htest
+	commit ucitrack
+EOF
+
+rm -f /tmp/luci-indexcache
+exit 0
